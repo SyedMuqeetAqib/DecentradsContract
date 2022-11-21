@@ -29,14 +29,17 @@ const config: HardhatUserConfig = {
     ],
   },
   etherscan: {
-    apiKey: "RD4J55U199JV8JHND3HZDZB9P4JBVFWYT7",
+    apiKey: process.env.ETHERSCAN_API_KEY,
   },
   networks: {
+    hardhat: {},
     aurora: {
       url: `https://aurora-testnet.infura.io/v3/fb35344adbec4a7981552fa6df10e607`,
-      accounts: [
-        "f7744aa258c35cc5f3b87307e022b7685241966b06061bccbf1315b978a00381",
-      ],
+      accounts: [process.env.PRIVATE_KEY],
+    },
+    polygon: {
+      url: `https://polygon-testnet-rpc.allthatnode.com:1317`,
+      accounts: [process.env.PRIVATE_KEY],
     },
   },
 };

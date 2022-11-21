@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.0;
-import "@openzeppelin/contracts/utils/Counters.sol";
+import "./DecentradsCounter.sol";
+import "./DecentradsInterface.sol";
 // import "hardhat/console.sol";
 
-contract DecentradsApplication {
+contract DecentradsApplication is DecentradsApplicationInterface {
     constructor(address[] memory _whitelistedAddress, address _owner, address _decentrads){
         uint256 i;
         totalVoters = 0;
@@ -21,20 +22,6 @@ contract DecentradsApplication {
 
     using Counters for Counters.Counter;
     Counters.Counter public addId;
-
-    struct Ad {
-        uint256 budget;
-        address adOwner;
-        string adTitle;
-        string description;
-        uint256 totalVoted; //True means voter is not approving an ad
-        uint256 startDate;
-        uint256 numberOfDays;
-        uint256 submissionTime;
-        bool appovedByApp;
-        bool claimedFundsByDapp;
-        uint256 voterShare;
-    }
 
     address public decentradAppOwner;
     address public decentrads;
@@ -71,6 +58,9 @@ contract DecentradsApplication {
             adInfo[currentId].numberOfDays = _numberOfDays;
             adInfo[currentId].submissionTime = block.timestamp;
             addId.increment();
+
+        emit AdPosted(_title, _decription, _startDate, _numberOfDays);
+
     }
 
     function approveAd(uint256 _adId) external onlyOwner isNotReported() {
@@ -79,8 +69,7 @@ contract DecentradsApplication {
         require(adInfo[_adId].startDate > block.timestamp, "you cannot approve an ad after start time");
         adInfo[_adId].appovedByApp = true;
 
-        //transfer here funds percentage of decentrads
-        // payable(decentrads).transfer((adInfo[_adId].budget/decentradsFee)*100);
+        emit AdApproved(_adId);
     }
 
     function retrieveAd(uint256 _adId) external {
@@ -91,6 +80,8 @@ contract DecentradsApplication {
         adInfo[_adId].budget = 0;
         //transfer back ad owners funds
         payable(msg.sender).transfer(adBudget);
+
+        emit AdRetrieved(_adId);
     }
 
     function claimFunds(uint256 _adId) external onlyOwner {
@@ -104,9 +95,11 @@ contract DecentradsApplication {
         adInfo[_adId].claimedFundsByDapp = true;
         (bool sentToDecentrads,) = payable(decentrads).call{value: decentradsShare}("");
         require(sentToDecentrads, "Transfer failed");
-        (bool sentToDappOwner,) = payable(msg.sender).call{value: adBudget - decentradsShare - adInfo[_adId].voterShare}("");
+        uint256 dappOwnerShare = adBudget - decentradsShare - adInfo[_adId].voterShare;
+        (bool sentToDappOwner,) = payable(msg.sender).call{value: dappOwnerShare}("");
         require(sentToDappOwner, "Transfer failed");
 
+        emit FundsClaimedByOwner(_adId, decentradsShare, dappOwnerShare);
     }
 
     function voteOnAd(uint256 _adId) external {
@@ -120,6 +113,8 @@ contract DecentradsApplication {
         uint256 voterShare = ((adInfo[_adId].budget*voterIncentiveFee)/100)/totalVoters;
         totalUserIncentive[msg.sender] += voterShare;
         adInfo[_adId].voterShare += voterShare;
+
+        emit VotedOnAd(_adId, voterShare, totalUserIncentive[msg.sender]);
     }
 
     function claimFundsByVoter() external {
@@ -129,6 +124,8 @@ contract DecentradsApplication {
         totalUserIncentive[msg.sender] = 0;
         (bool sentToVoter,) = payable(msg.sender).call{value: userReward}("");
         require(sentToVoter, "Transfer failed");
+
+        emit FundsClaimedByVoter(userReward);
     }
 
     function isValidAd(uint256 _adId) view external returns(bool, uint256) {
@@ -142,6 +139,8 @@ contract DecentradsApplication {
     function reportDapp() external {
         require(msg.sender == decentrads, "only Factory contract can remove this appliction");
         isReported = true;
+
+        emit DappReported();
     }
 
     function whitelistAddress(address _user) external onlyOwner() isNotReported() {
@@ -149,6 +148,8 @@ contract DecentradsApplication {
 
         whitelistedAddress[_user] = true;
         totalVoters +=1;
+
+        emit AddressWhitelist(_user);
     }
 
     function blockAddress(address _user) external onlyOwner() isNotReported() {
@@ -156,37 +157,24 @@ contract DecentradsApplication {
 
         whitelistedAddress[_user] = false;
         totalVoters-=1;
+
+        emit AddressBlacklist(_user);
     }
 }
 
 
-contract DecentradsFactory {
+contract DecentradsFactory is DecentradsFactoryInterface {
     using Counters for Counters.Counter;
     Counters.Counter public dappId;
     Counters.Counter public dappReportId;
 
-
-    uint256 dappCollatoralAmount = 1000000000000000000;
-    uint256 voterCollatoralAmount = 1000000000000000000;
-
-    struct DecentradsAppInfo {
-        uint256 id;
-        DecentradsApplication application;
-        bool reported;
-        mapping(uint256 => ReportProposal) dappReport;
+    constructor() {
+        emit FactoryDeployed(dappCollatoralAmount, voterCollatoralAmount);
     }
 
-    struct Voter {
-        address voterAddress;
-        uint256 collateral;
-    }
+    uint256 dappCollatoralAmount = 10000000000000;
+    uint256 voterCollatoralAmount = 10000000000000;
 
-    struct ReportProposal {
-        address dappAddress;
-        string reportReason;
-        uint256 numberOfVotes;
-        bool isPassed;
-    }
 
     mapping (address => DecentradsAppInfo) public dappInfo;
     mapping (address => Voter) public voterInfo;
@@ -205,24 +193,39 @@ contract DecentradsFactory {
         return address(dappInfo[msg.sender].application);    
     }
 
+    function setDappCollatoral(uint256 _collatoral) external {
+        dappCollatoralAmount = _collatoral;
+
+        emit DappCollatoralChanged(_collatoral);
+    }
+
+      function setVoterCollatoral(uint256 _collatoral) external {
+        voterCollatoralAmount = _collatoral;
+
+        emit VoterCollatoralChanged(_collatoral);
+    }
+
     function registerApplication(address[] calldata _whitelistedAddress) external payable {
-        require(msg.value == dappCollatoralAmount, "Collateral Amount is not 1 ETH");
+        require(msg.value == dappCollatoralAmount, "Collateral Amount is not 0.01 ETH");
         require(_whitelistedAddress.length >= 0, "Please provide an array as whitelisted Addresses");
         require(address(dappInfo[msg.sender].application) == address(0), "Application Already Registered");
         DecentradsApplication dapp = new DecentradsApplication(_whitelistedAddress, msg.sender, address(this));
         dappInfo[msg.sender].id = dappId.current();
         dappInfo[msg.sender].application = dapp;
         decentradsApp[msg.sender] = DecentradsApplication(dapp);
+        emit AppRegistered(_whitelistedAddress, msg.sender, dappId.current(), address(dapp));
         dappId.increment();
     }
 
     function registerVoter() external payable {
         //voter removed condition is not handled yet
         require(voterInfo[msg.sender].voterAddress == address(0), "already registered as Voter");
-        require(msg.value == voterCollatoralAmount, "Collateral Amount is not 1 ETH");
+        require(msg.value == voterCollatoralAmount, "Collateral Amount is not 0.001 ETH");
         voterInfo[msg.sender].collateral = msg.value;
         voterInfo[msg.sender].voterAddress = msg.sender;
         totalVoters +=1;
+
+        emit VoterRegistered();
     }
 
     function ReportDapp(address _dappAddress, string calldata _reportReason) external onlyVoter {
@@ -231,12 +234,16 @@ contract DecentradsFactory {
         report.dappAddress = _dappAddress;
         report.reportReason = _reportReason;
         dappInfo[_dappAddress].dappReport[dappReportId.current()] = report;
+
+        emit DappReported(_dappAddress, _reportReason, dappReportId.current());
         dappReportId.increment();
     }
 
     function voteOnReport(address _dappAddress, uint256 _reportId) external onlyVoter {
         require(dappInfo[_dappAddress].dappReport[_reportId].dappAddress != address(0), "This proposal does not exist");
         dappInfo[_dappAddress].dappReport[_reportId].numberOfVotes += 1;
+
+        emit VoteReportedDapp(_dappAddress, _reportId);
     }
 
     function applyReportDapp(address _dappAddress, uint256 _reportId) external onlyVoter {
@@ -244,6 +251,8 @@ contract DecentradsFactory {
         (bool reported, ) = isProposalSuccess(_dappAddress, _reportId);
         require(reported, "Dapp is not reported by proposal");
         decentradsApp[_dappAddress].reportDapp();
+
+        emit ApplyDappReported(_dappAddress, _reportId, reported);
     }
 
     function isProposalSuccess(address _dappAddress, uint256 _reportId) view internal returns(bool, uint256) {
@@ -258,3 +267,4 @@ contract DecentradsFactory {
     }
 
 }
+
