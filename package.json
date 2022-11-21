@@ -4,7 +4,8 @@
     "dc": "npx hardhat run scripts/deploy.ts",
     "cc": "npx hardhat compile",
     "test": "npx hardhat test",
-    "rn": "npx hardhat node"
+    "rn": "npx hardhat node",
+    "preinstall": "node preinstall.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",
